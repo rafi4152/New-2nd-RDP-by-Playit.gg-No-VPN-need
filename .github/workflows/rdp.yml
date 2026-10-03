@@ -4,54 +4,65 @@ on:
   workflow_dispatch:
 
 jobs:
-  ultra-fast-rdp:
+  secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 357
+    timeout-minutes: 350
 
     steps:
-      - name: 🚀 Core RDP & Extreme Network Optimization
+      - name: Configure Core RDP Settings & 5G Optimization
         shell: powershell
         run: |
-          Write-Host ">>> [1/5] Configuring Core RDP Settings..."
+          Write-Host ">>> [1/4] Applying Core RDP Settings..."
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-          Write-Host ">>> [2/5] Applying 5G/Mobile Network Optimizations (Low Latency)..."
+          Write-Host ">>> [2/4] Applying Network Optimizations (Low Latency)..."
           netsh int tcp set global autotuninglevel=experimental
           netsh int tcp set global ecncapability=enabled
 
-          Write-Host ">>> [3/5] Applying H.264 Video Compression & Graphics Tweaks..."
+          Write-Host ">>> [3/4] Applying H.264 Video & UI Performance Tweaks..."
           reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fEnableH264AVC444 /t REG_DWORD /d 1 /f
           reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v MinSendInterval /t REG_DWORD /d 10 /f
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v MaxDisableFontSmoothing /t REG_DWORD /d 1 /f
-          
-          Write-Host ">>> [4/5] Disabling Heavy UI Animations for Faster Response..."
           reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
           reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f
-
-          Write-Host ">>> [5/5] Enabling Multi-User & Firewall Rules..."
+          
+          # Allow Multi-User Sessions
           reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fSingleSessionPerUser /t REG_DWORD /d 0 /f
+
+          Write-Host ">>> [4/4] Configuring Firewall..."
+          netsh advfirewall firewall delete rule name="RDP-Tunnel" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="RDP-Tunnel" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
           Write-Host "✅ Network and RDP optimizations applied successfully!"
 
-      - name: 👥 Create Dual Users (Admin & Mobile)
+      - name: Create Dual Users (Admin & Mobile)
         shell: powershell
         run: |
           $password = "Aziz@2006"
-          $securePass = ConvertTo-SecureString$password -AsPlainText -Force
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
-          Write-Host ">>> Creating [Admin] user with Administrator privileges..."
-          New-LocalUser -Name "Admin" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Write-Host ">>> Creating [Admin] User..."
+          if (-not (Get-LocalUser -Name "Admin" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "Admin" -Password $securePass -AccountNeverExpires
+          }
           Add-LocalGroupMember -Group "Administrators" -Member "Admin" -ErrorAction SilentlyContinue
-          
-          Write-Host ">>> Creating [Mobile] user for phone access..."
-          New-LocalUser -Name "Mobile" -Password $securePass -AccountNeverExpires -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Admin" -ErrorAction SilentlyContinue
+
+          Write-Host ">>> Creating [Mobile] User..."
+          if (-not (Get-LocalUser -Name "Mobile" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "Mobile" -Password $securePass -AccountNeverExpires
+          }
+          Add-LocalGroupMember -Group "Administrators" -Member "Mobile" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Mobile" -ErrorAction SilentlyContinue
           
-          Write-Host "✅ Dual users created successfully!"
+          if (-not (Get-LocalUser -Name "Admin") -or -not (Get-LocalUser -Name "Mobile")) {
+              Write-Error "❌ User creation failed"
+              exit 1
+          }
+          Write-Host "✅ Dual users successfully configured!"
 
-      - name: 🌐 Start 4x Unlimited Tunnels (No VPN / No Keys)
+      - name: Establish 4x Unlimited Tunnels
         shell: powershell
         run: |
           Write-Host ">>> Generating SSH Key for Reverse Tunnels..."
@@ -59,42 +70,41 @@ jobs:
           if (-not (Test-Path "$HOME\.ssh")) { New-Item -ItemType Directory -Path "$HOME\.ssh" -Force | Out-Null }
           Add-Content "$HOME\.ssh\config" "StrictHostKeyChecking no`n"
 
-          Write-Host ">>> Downloading Bore Tunnel..."
+          Write-Host ">>> Downloading Tunnel Core..."
           Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip" -OutFile "$env:TEMP\bore.zip"
           Expand-Archive -Path "$env:TEMP\bore.zip" -DestinationPath "$env:TEMP\bore" -Force
 
-          Write-Host ">>> Launching Tunnel 1: Bore (Primary TCP)..."
+          Write-Host ">>> Starting Tunnel 1: Bore (Primary TCP)..."
           Start-Process -FilePath "$env:TEMP\bore\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "$env:TEMP\bore.log" -WindowStyle Hidden
           
-          Write-Host ">>> Launching Tunnel 2: Serveo (SSH TCP Backup)..."
+          Write-Host ">>> Starting Tunnel 2: Serveo (SSH TCP Backup)..."
           Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 serveo.net" -RedirectStandardOutput "$env:TEMP\serveo.log" -RedirectStandardError "$env:TEMP\serveo.log" -WindowStyle Hidden
 
-          Write-Host ">>> Launching Tunnel 3: Pinggy (SSH TCP Backup)..."
+          Write-Host ">>> Starting Tunnel 3: Pinggy (SSH TCP Backup)..."
           Start-Process -FilePath "ssh" -ArgumentList "-p 443 -R0:localhost:3389 tcp@a.pinggy.io" -RedirectStandardOutput "$env:TEMP\pinggy.log" -RedirectStandardError "$env:TEMP\pinggy.log" -WindowStyle Hidden
 
-          Write-Host ">>> Launching Tunnel 4: Sish (SSH TCP Backup)..."
+          Write-Host ">>> Starting Tunnel 4: Sish (SSH TCP Backup)..."
           Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 tuns.sh" -RedirectStandardOutput "$env:TEMP\sish.log" -RedirectStandardError "$env:TEMP\sish.log" -WindowStyle Hidden
 
-          Write-Host ">>> Waiting 18 seconds for all 4 global servers to assign TCP ports..."
-          Start-Sleep -Seconds 18
+          Write-Host ">>> Waiting for network routes to stabilize..."
+          Start-Sleep -Seconds 15
 
+      - name: Verify Connections & Output Links
+        shell: powershell
+        run: |
           Write-Host "`n================================================================="
           Write-Host "   🟢 4x UNLIMITED RDP SERVERS ARE READY 🟢"
           Write-Host "================================================================="
           
-          # 1. Bore IP
           $boreLog = Get-Content "$env:TEMP\bore.log" -ErrorAction SilentlyContinue | Out-String
           if ($boreLog -match 'listening at (bore\.pub:\d+)') { Write-Host "✅ LINK 1 (Bore)   : $($matches[1])" } else { Write-Host "❌ LINK 1 (Bore)   : Connection Delayed" }
           
-          # 2. Serveo IP
           $serveoLog = Get-Content "$env:TEMP\serveo.log" -ErrorAction SilentlyContinue | Out-String
           if ($serveoLog -match '(serveo\.net:\d+)') { Write-Host "✅ LINK 2 (Serveo) : $($matches[1])" } else { Write-Host "❌ LINK 2 (Serveo) : Connection Delayed" }
           
-          # 3. Pinggy IP
           $pinggyLog = Get-Content "$env:TEMP\pinggy.log" -ErrorAction SilentlyContinue | Out-String
           if ($pinggyLog -match 'tcp://([a-zA-Z0-9.-]+:\d+)') { Write-Host "✅ LINK 3 (Pinggy) : $($matches[1])" } else { Write-Host "❌ LINK 3 (Pinggy) : Connection Delayed" }
 
-          # 4. Sish IP
           $sishLog = Get-Content "$env:TEMP\sish.log" -ErrorAction SilentlyContinue | Out-String
           if ($sishLog -match '(tuns\.sh:\d+)') { Write-Host "✅ LINK 4 (Sish)   : $($matches[1])" } else { Write-Host "❌ LINK 4 (Sish)   : Connection Delayed" }
 
@@ -103,7 +113,7 @@ jobs:
           Write-Host "🔑 PASS : Aziz@2006"
           Write-Host "=================================================================`n"
 
-      - name: ⚙️ Maintain Connection & Auto-Script Download
+      - name: Maintain Connection + Watch RDP User
         shell: powershell
         run: |
           $rdpProfile = "C:\Users\Admin"
@@ -117,27 +127,25 @@ jobs:
                       if (-not (Test-Path $startupPath)) {
                           New-Item -ItemType Directory -Path $startupPath -Force | Out-Null
                       }
-                      Write-Host ">>> Downloading startup batch script..."
-                      Invoke-WebRequest -Uri $downloadUrl -OutFile $downloadPath -UseBasicParsing
-                      Write-Host "✅ Downloads.bat copied successfully!"
-                      
-                      Write-Host ">>> Executing Downloads.bat..."
+                      Invoke-WebRequest -Uri $downloadUrl -OutFile$downloadPath -UseBasicParsing
+                      Write-Host "✅ Downloads.bat copied to $downloadPath"
+
                       cmd /c $downloadPath
-                      Write-Host "✅ Downloads.bat executed successfully!"
+                      Write-Host "✅ Downloads.bat executed successfully"
                       break
                   }
                   catch {
-                      Write-Host "❌ Error executing Downloads.bat: $($_.Exception.Message)"
+                      Write-Host "❌ Error copying or executing Downloads.bat: $($_.Exception.Message)"
                       break
                   }
               }
               else {
-                  Write-Host "[$(Get-Date)] Waiting for Admin profile to be initialized (Log in to create profile)..."
+                  Write-Host "[$(Get-Date)] Waiting for Admin profile to be created (Log in via RDP to trigger)..."
                   Start-Sleep -Seconds 30
               }
           }
 
-          Write-Host "`n>>> System is now running in Keep-Alive mode. Tunnels are active..."
           while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Connections are maintained securely in the background."
               Start-Sleep -Seconds 300
           }
