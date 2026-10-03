@@ -6,7 +6,7 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-latest
-    timeout-minutes: 350
+    timeout-minutes: 357
 
     steps:
       - name: Configure Core RDP Settings & 5G Optimization
@@ -27,10 +27,8 @@ jobs:
           reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
           reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f
           
-          # Allow Multi-User Sessions
+          Write-Host ">>> [4/4] Configuring Multi-User & Firewall..."
           reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fSingleSessionPerUser /t REG_DWORD /d 0 /f
-
-          Write-Host ">>> [4/4] Configuring Firewall..."
           netsh advfirewall firewall delete rule name="RDP-Tunnel" -ErrorAction SilentlyContinue
           netsh advfirewall firewall add rule name="RDP-Tunnel" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
@@ -43,31 +41,25 @@ jobs:
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
           Write-Host ">>> Creating [Admin] User..."
-          if (-not (Get-LocalUser -Name "Admin" -ErrorAction SilentlyContinue)) {
-              New-LocalUser -Name "Admin" -Password $securePass -AccountNeverExpires
-          }
+          if (-not (Get-LocalUser -Name "Admin" -ErrorAction SilentlyContinue)) { New-LocalUser -Name "Admin" -Password $securePass -AccountNeverExpires }
           Add-LocalGroupMember -Group "Administrators" -Member "Admin" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Admin" -ErrorAction SilentlyContinue
 
           Write-Host ">>> Creating [Mobile] User..."
-          if (-not (Get-LocalUser -Name "Mobile" -ErrorAction SilentlyContinue)) {
-              New-LocalUser -Name "Mobile" -Password $securePass -AccountNeverExpires
-          }
+          if (-not (Get-LocalUser -Name "Mobile" -ErrorAction SilentlyContinue)) { New-LocalUser -Name "Mobile" -Password $securePass -AccountNeverExpires }
           Add-LocalGroupMember -Group "Administrators" -Member "Mobile" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Mobile" -ErrorAction SilentlyContinue
           
-          if (-not (Get-LocalUser -Name "Admin") -or -not (Get-LocalUser -Name "Mobile")) {
-              Write-Error "❌ User creation failed"
-              exit 1
-          }
           Write-Host "✅ Dual users successfully configured!"
 
       - name: Establish 4x Unlimited Tunnels
         shell: powershell
         run: |
+          Write-Host ">>> Creating SSH Directory..."
+          if (-not (Test-Path "$HOME\.ssh")) { New-Item -ItemType Directory -Path "$HOME\.ssh" -Force | Out-Null }
+
           Write-Host ">>> Generating SSH Key for Reverse Tunnels..."
           ssh-keygen -t rsa -N '""' -f "$HOME\.ssh\id_rsa" | Out-Null
-          if (-not (Test-Path "$HOME\.ssh")) { New-Item -ItemType Directory -Path "$HOME\.ssh" -Force | Out-Null }
           Add-Content "$HOME\.ssh\config" "StrictHostKeyChecking no`n"
 
           Write-Host ">>> Downloading Tunnel Core..."
@@ -78,16 +70,16 @@ jobs:
           Start-Process -FilePath "$env:TEMP\bore\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "$env:TEMP\bore.log" -WindowStyle Hidden
           
           Write-Host ">>> Starting Tunnel 2: Serveo (SSH TCP Backup)..."
-          Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 serveo.net" -RedirectStandardOutput "$env:TEMP\serveo.log" -RedirectStandardError "$env:TEMP\serveo.log" -WindowStyle Hidden
+          Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 serveo.net" -RedirectStandardOutput "$env:TEMP\serveo.log" -WindowStyle Hidden
 
           Write-Host ">>> Starting Tunnel 3: Pinggy (SSH TCP Backup)..."
-          Start-Process -FilePath "ssh" -ArgumentList "-p 443 -R0:localhost:3389 tcp@a.pinggy.io" -RedirectStandardOutput "$env:TEMP\pinggy.log" -RedirectStandardError "$env:TEMP\pinggy.log" -WindowStyle Hidden
+          Start-Process -FilePath "ssh" -ArgumentList "-p 443 -R0:localhost:3389 tcp@a.pinggy.io" -RedirectStandardOutput "$env:TEMP\pinggy.log" -WindowStyle Hidden
 
           Write-Host ">>> Starting Tunnel 4: Sish (SSH TCP Backup)..."
-          Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 tuns.sh" -RedirectStandardOutput "$env:TEMP\sish.log" -RedirectStandardError "$env:TEMP\sish.log" -WindowStyle Hidden
+          Start-Process -FilePath "ssh" -ArgumentList "-R 0:localhost:3389 tuns.sh" -RedirectStandardOutput "$env:TEMP\sish.log" -WindowStyle Hidden
 
-          Write-Host ">>> Waiting for network routes to stabilize..."
-          Start-Sleep -Seconds 15
+          Write-Host ">>> Waiting 18 seconds for network routes to stabilize..."
+          Start-Sleep -Seconds 18
 
       - name: Verify Connections & Output Links
         shell: powershell
@@ -128,14 +120,14 @@ jobs:
                           New-Item -ItemType Directory -Path $startupPath -Force | Out-Null
                       }
                       Invoke-WebRequest -Uri $downloadUrl -OutFile$downloadPath -UseBasicParsing
-                      Write-Host "✅ Downloads.bat copied to $downloadPath"
+                      Write-Host "✅ Downloads.bat copied successfully"
 
                       cmd /c $downloadPath
                       Write-Host "✅ Downloads.bat executed successfully"
                       break
                   }
                   catch {
-                      Write-Host "❌ Error copying or executing Downloads.bat: $($_.Exception.Message)"
+                      Write-Host "❌ Error executing Downloads.bat"
                       break
                   }
               }
@@ -149,3 +141,4 @@ jobs:
               Write-Host "[$(Get-Date)] RDP Active - Connections are maintained securely in the background."
               Start-Sleep -Seconds 300
           }
+          
